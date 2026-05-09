@@ -1,0 +1,21 @@
+{
+    "version": "1.0.0",
+    "private": true,
+    "author": {
+        "name": "autonomous.ai"
+    },
+    "license": "Apache-2.0",
+    "dependencies": {
+        "@coral-xyz/anchor": "0.31.1",
+        "@solana/spl-token": "^0.1.8",
+        "@solana/web3.js": "^1.98.4"
+    },
+    "devDependencies": {
+        "@types/chai": "^5.2.3",
+        "@types/mocha": "^9.0.0",
+        "chai": "^4.3.4",
+        "mocha": "^9.0.3",
+        "ts-mocha": "^10.0.0",
+        "typescript": "^4.3.5"
+    }
+}

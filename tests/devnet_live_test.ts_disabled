@@ -1,0 +1,203 @@
+import * as anchor from "@coral-xyz/anchor";
+import { Program } from "@coral-xyz/anchor";
+import { LambdaEscrow } from "../target/types/lambda_escrow";
+import { 
+  PublicKey, 
+  Keypair, 
+  SystemProgram, 
+  Transaction 
+} from "@solana/web3.js";
+import { 
+  TOKEN_PROGRAM_ID, 
+  Token
+} from "@solana/spl-token";
+import { assert } from "chai";
+
+describe("lambda-escrow devnet demo", () => {
+  const provider = anchor.AnchorProvider.env();
+  anchor.setProvider(provider);
+
+  const program = anchor.workspace.LambdaEscrow as Program<LambdaEscrow>;
+  
+  // Devnet USDC Mint (Circle)
+  const USDC_MINT = new PublicKey("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU");
+  
+  // Random order code to avoid collisions
+  const orderCode = new anchor.BN(Math.floor(Math.random() * 1000000));
+  const amount = new anchor.BN(1000000); // 1 USDC (6 decimals)
+
+  const seller = Keypair.generate();
+  const judge = Keypair.generate(); // In production, this is Flamingo
+  const escrowAccount = Keypair.generate();
+
+  let buyerUSDCAccount: PublicKey;
+  let sellerUSDCAccount: PublicKey;
+  let configPDA: PublicKey;
+  let platformFeeVault: PublicKey;
+
+  before(async () => {
+    console.log("Setting up demo...");
+    console.log("Wallet address:", provider.wallet.publicKey.toBase58());
+    console.log("Order Code:", orderCode.toString());
+
+    // Initialize Token instance for USDC
+    const usdcToken = new Token(
+      provider.connection,
+      USDC_MINT,
+      TOKEN_PROGRAM_ID,
+      (provider.wallet as any).payer
+    );
+
+    // Get Buyer's USDC account (must have balance)
+    const buyerATA = await usdcToken.getOrCreateAssociatedAccountInfo(provider.wallet.publicKey);
+    buyerUSDCAccount = buyerATA.address;
+    console.log("Buyer USDC Account:", buyerUSDCAccount.toBase58());
+
+    const balance = await provider.connection.getTokenAccountBalance(buyerUSDCAccount);
+    console.log("Buyer USDC Balance:", balance.value.uiAmount);
+
+    if (balance.value.uiAmount === null || balance.value.uiAmount < 1) {
+       throw new Error("Insufficient USDC balance on Devnet. Please send at least 1 USDC to the wallet.");
+    }
+
+    // Create Seller's USDC account
+    const sellerATA = await usdcToken.getOrCreateAssociatedAccountInfo(seller.publicKey);
+    sellerUSDCAccount = sellerATA.address;
+    console.log("Seller USDC Account:", sellerUSDCAccount.toBase58());
+
+    // Config PDA
+    [configPDA] = PublicKey.findProgramAddressSync(
+      [Buffer.from("config")],
+      program.programId
+    );
+
+    // Platform Fee Vault PDA
+    [platformFeeVault] = PublicKey.findProgramAddressSync(
+      [Buffer.from("platform_vault")],
+      program.programId
+    );
+    console.log("Platform Fee Vault:", platformFeeVault.toBase58());
+
+    // Initialize Config if it doesn't exist
+    let configInitialized = false;
+    try {
+      await program.account.programConfig.fetch(configPDA);
+      console.log("Config already initialized.");
+      configInitialized = true;
+    } catch (e) {
+      console.log("Initializing Config...");
+      try {
+        const tx = await program.methods.initializeConfig(
+          new anchor.BN(100000000000), // 100k USDC threshold
+          new anchor.BN(86400) // 24h window
+        ).accounts({
+          admin: provider.wallet.publicKey,
+          platformFeeVault: platformFeeVault,
+          mint: USDC_MINT,
+        }).rpc();
+        console.log("Config initialized. TX:", tx);
+        configInitialized = true;
+      } catch (initError: any) {
+        console.log("Config init error:", initError.message || initError);
+        // Continue anyway
+        configInitialized = true;
+      }
+    }
+  });
+
+  it("Executes full Escrow flow on Devnet", async () => {
+    // 1. Initialize Escrow
+    console.log("Step 1: Initializing Escrow...");
+    
+    const [vaultAccount] = PublicKey.findProgramAddressSync(
+      [Buffer.from("vault"), judge.publicKey.toBuffer(), orderCode.toArrayLike(Buffer, "le", 8)],
+      program.programId
+    );
+
+    const [vaultAuthority] = PublicKey.findProgramAddressSync(
+      [Buffer.from("escrow"), judge.publicKey.toBuffer(), orderCode.toArrayLike(Buffer, "le", 8)],
+      program.programId
+    );
+
+    const initTx = await program.methods.initialize(amount, orderCode)
+      .accounts({
+        buyer: provider.wallet.publicKey,
+        seller: seller.publicKey,
+        judge: judge.publicKey,
+        mint: USDC_MINT,
+        buyerDepositTokenAccount: buyerUSDCAccount,
+        sellerReceiveTokenAccount: sellerUSDCAccount,
+        escrowAccount: escrowAccount.publicKey,
+        config: configPDA,
+        vaultAccount: vaultAccount,
+        vaultAuthority: vaultAuthority,
+      })
+      .signers([escrowAccount])
+      .rpc();
+    
+    console.log("Escrow Initialized. TX:", `https://explorer.solana.com/tx/${initTx}?cluster=devnet`);
+
+    // 2. Shipping (Judge signs) - 45% to seller, 5% to platform
+    console.log("Step 2: Marking as Shipped (45% seller + 5% platform)...");
+    const shipTx = await program.methods.shipping(orderCode, "DEMO_TRACKING_123", 0)
+      .accounts({
+        buyer: provider.wallet.publicKey,
+        buyerDepositTokenAccount: buyerUSDCAccount,
+        seller: seller.publicKey,
+        sellerReceiveTokenAccount: sellerUSDCAccount,
+        judge: judge.publicKey,
+        escrowAccount: escrowAccount.publicKey,
+        vaultAccount: vaultAccount,
+        vaultAuthority: vaultAuthority,
+        config: configPDA,
+        platformFeeVault: platformFeeVault,
+      })
+      .signers([judge])
+      .rpc();
+    
+    console.log("Marked as Shipped. TX:", `https://explorer.solana.com/tx/${shipTx}?cluster=devnet`);
+
+    // 3. Delivered (Judge signs)
+    console.log("Step 3: Marking as Delivered...");
+    const deliverTx = await program.methods.delivered(orderCode, "DEMO_TRACKING_123")
+      .accounts({
+        buyer: provider.wallet.publicKey,
+        seller: seller.publicKey,
+        judge: judge.publicKey,
+        escrowAccount: escrowAccount.publicKey,
+        vaultAccount: vaultAccount,
+        vaultAuthority: vaultAuthority,
+        config: configPDA,
+      })
+      .signers([judge])
+      .rpc();
+    
+    console.log("Marked as Delivered. TX:", `https://explorer.solana.com/tx/${deliverTx}?cluster=devnet`);
+
+    // 4. Exchange (Judge signs) - Release remaining 50%
+    console.log("Step 4: Auto-release (remaining 50% to seller)...");
+    const exchangeTx = await program.methods.exchange()
+      .accounts({
+        judge: judge.publicKey,
+        buyer: provider.wallet.publicKey,
+        seller: seller.publicKey,
+        sellerReceiveTokenAccount: sellerUSDCAccount,
+        escrowAccount: escrowAccount.publicKey,
+        vaultAccount: vaultAccount,
+        vaultAuthority: vaultAuthority,
+        config: configPDA,
+      })
+      .signers([judge])
+      .rpc();
+    
+    console.log("Auto-release Complete. TX:", `https://explorer.solana.com/tx/${exchangeTx}?cluster=devnet`);
+
+    // Verification
+    const finalSellerBalance = await provider.connection.getTokenAccountBalance(sellerUSDCAccount);
+    console.log("Final Seller USDC Balance:", finalSellerBalance.value.uiAmount);
+    
+    // Seller should have received 95% (0.95 USDC) after all releases
+    // 45% + 50% = 95%
+    assert.equal(finalSellerBalance.value.uiAmount, 0.95, "Seller should have received 0.95 USDC");
+  });
+});
