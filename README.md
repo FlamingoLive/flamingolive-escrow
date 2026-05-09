@@ -25,7 +25,7 @@ The platform retains a **5% fee** on every transaction. The logistics fee is pai
   - Platform collects the **5%** fee.
   - Seller receives **50%** of the remaining escrow amount for liquidity.
 - **Delivery (Milestone 2)**: 
-  - Remaining **50%** to seller after the 24hr dispute window expires.
+  - Remaining **50%** to seller after the configurable dispute window expires.
 
 ---
 
@@ -35,8 +35,8 @@ The escrow implements a logistics-driven release schedule to balance seller cash
 
 1.  **Funded (0%):** Buyer deposits full USDC amount. The logistics fee is immediately paid to the platform to secure shipping.
 2.  **Shipped (50%):** Once the **carrier** provides a valid tracking ID, the platform fee is collected and **50%** of the remaining escrow funds are released to the seller to ensure they remain liquid.
-3.  **Delivered (50%):** When the carrier marks the package as delivered, a **24-hour dispute window** opens.
-4.  **Completed:** If no dispute is raised within 24 hours, the final **50%** is released to the seller.
+3.  **Delivered (50%):** When the carrier marks the package as delivered, the **dispute window** opens.
+4.  **Completed:** If no dispute is raised within the configured window, the final **50%** is released to the seller.
 
 ---
 
@@ -46,13 +46,13 @@ The escrow implements a logistics-driven release schedule to balance seller cash
 
 The Flamingo platform acts as the "Judge." Only the Judge keypair can confirm shipping and delivery milestones. This centralized trust model ensures that funds are only released when physical logistics scans are verified against carriers (DHL, Aramex, FedEx, Sendbox).
 
-### ⏱️ Immutable 24-Hour Dispute Window
+### ⏱️ Configurable Dispute Window
 
-Once delivery is confirmed, buyers have exactly 24 hours to raise a dispute. This window is hardcoded at the contract level to ensure fairness and prevent infinite fund locking.
+Once delivery is confirmed, buyers have a configurable window to raise a dispute (default: 24 hours). The admin can adjust this via the update_config instruction to ensure fairness and prevent infinite fund locking.
 
 ### 🔌 Circuit Breaker Volume Management
 
-To protect against flash-loan attacks or platform exploits, the contract includes a rolling volume circuit breaker. If the total USDC volume exceeds a predefined threshold within a specific window, the program automatically pauses.
+To protect against flash-loan attacks or platform exploits, the contract includes a rolling volume circuit breaker. If the total USDC volume exceeds a configurable threshold within a specific window, the program automatically pauses. The admin can adjust both the volume threshold and window duration via update_config.
 
 ### 📦 Multi-Carrier Support
 
@@ -127,7 +127,7 @@ The project follows a modularized Anchor structure for better maintainability an
 
 ```text
 programs/lambda-escrow/src/
-├── constants.rs      # Hardcoded values (e.g., 24h window)
+├── constants.rs      # Default values (e.g., 24h window)
 ├── errors.rs         # Custom ErrorCodes
 ├── events.rs        # All on-chain events for off-chain indexing
 ├── instructions/   # Logic partitioned by role (buyer, judge, admin, logistics)
