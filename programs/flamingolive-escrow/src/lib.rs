@@ -8,7 +8,7 @@ pub mod state;
 
 use instructions::*;
 
-declare_id!("BcEopLQ9MxMdMtU57m5KYA4sk9qvhy29XkneEKHcfuSf");
+declare_id!("Gp3Qy7yguTZmDkNwKUxpweQfcRNsQ5tRQTjEkjqcDgSV");
 
 #[program]
 pub mod flamingolive_escrow {

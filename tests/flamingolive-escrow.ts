@@ -878,8 +878,7 @@ describe("flamingolive-escrow", () => {
             );
 
             // Current admin rotates authority to newAdmin
-            // Cast to any: updateAdmin is in the source but IDL types require `anchor build` to regenerate.
-            await (program.methods as any)
+            await program.methods
                 .updateAdmin(newAdmin.publicKey)
                 .accounts({ currentAdmin: admin.publicKey, config: configPda })
                 .rpc();
@@ -908,7 +907,7 @@ describe("flamingolive-escrow", () => {
                 .rpc();
 
             // Rotate authority back so the rest of the suite can continue
-            await (program.methods as any)
+            await program.methods
                 .updateAdmin(admin.publicKey)
                 .accounts({ currentAdmin: newAdmin.publicKey, config: configPda })
                 .signers([newAdmin])
