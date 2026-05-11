@@ -39,6 +39,10 @@ pub mod flamingolive_escrow {
         instructions::admin::collect_fees(ctx)
     }
 
+    pub fn update_admin(ctx: Context<UpdateAdmin>, new_admin: Pubkey) -> Result<()> {
+        instructions::admin::update_admin(ctx, new_admin)
+    }
+
     pub fn initialize(
         ctx: Context<Initialize>,
         amount: u64,

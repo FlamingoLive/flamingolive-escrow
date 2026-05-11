@@ -20,7 +20,7 @@ pub fn adjudge(ctx: Context<Adjudge>, order_code: u64, status: u8) -> Result<()>
     let deadline = ctx.accounts.escrow_account.dispute_time
         .checked_add(ctx.accounts.config.dispute_resolution_deadline)
         .ok_or(ErrorCode::MathOverflow)?;
-    require!(clock.unix_timestamp <= deadline, ErrorCode::DisputeWindowExpired); // Or a new error code
+    require!(clock.unix_timestamp <= deadline, ErrorCode::DisputeResolutionDeadlineExpired);
     require!(status == 0 || status == 2, ErrorCode::InvalidStatus);
     require!(
         ctx.accounts.vault_account.amount >= ctx.accounts.escrow_account.amount,
@@ -28,7 +28,7 @@ pub fn adjudge(ctx: Context<Adjudge>, order_code: u64, status: u8) -> Result<()>
     );
 
     let order_bytes = order_code.to_le_bytes();
-    let judge_key   = ctx.accounts.judge.key();
+    let judge_key   = ctx.accounts.escrow_account.judge_key;
     let bump        = ctx.bumps.vault_authority;
     let seeds       = &[b"authority", judge_key.as_ref(), order_bytes.as_ref(), &[bump]];
     let signer      = &[&seeds[..]];
@@ -118,7 +118,7 @@ pub fn refund(ctx: Context<Refund>, order_code: u64) -> Result<()> {
         .ok_or(ErrorCode::MathOverflow)?;
 
     let order_bytes = order_code.to_le_bytes();
-    let judge_key   = ctx.accounts.judge.key();
+    let judge_key   = ctx.accounts.escrow_account.judge_key;
     let bump        = ctx.bumps.vault_authority;
     let seeds       = &[b"authority", judge_key.as_ref(), order_bytes.as_ref(), &[bump]];
     let signer      = &[&seeds[..]];
@@ -213,7 +213,7 @@ pub fn refund_partial(
         .ok_or(ErrorCode::MathOverflow)?;
 
     let order_bytes = order_code.to_le_bytes();
-    let judge_key   = ctx.accounts.judge.key();
+    let judge_key   = ctx.accounts.escrow_account.judge_key;
     let bump        = ctx.bumps.vault_authority;
     let seeds       = &[b"authority", judge_key.as_ref(), order_bytes.as_ref(), &[bump]];
     let signer      = &[&seeds[..]];
@@ -237,7 +237,8 @@ pub fn refund_partial(
 
     // Keep deposited_amount in sync so a subsequent full refund decrements correctly.
     ctx.accounts.escrow_account.deposited_amount = ctx.accounts.escrow_account.deposited_amount
-        .saturating_sub(amount);
+        .checked_sub(amount)
+        .ok_or(ErrorCode::MathOverflow)?;
 
     let remaining = ctx.accounts.escrow_account.amount;
 
@@ -320,14 +321,14 @@ pub struct Adjudge<'info> {
 
     #[account(
         mut,
-        seeds = [b"vault", judge.key().as_ref(), order_code.to_le_bytes().as_ref()],
+        seeds = [b"vault", escrow_account.judge_key.as_ref(), order_code.to_le_bytes().as_ref()],
         bump
     )]
     pub vault_account: Box<Account<'info, TokenAccount>>,
 
     /// CHECK: PDA authority — uses "authority" seeds
     #[account(
-        seeds = [b"authority", judge.key().as_ref(), order_code.to_le_bytes().as_ref()],
+        seeds = [b"authority", escrow_account.judge_key.as_ref(), order_code.to_le_bytes().as_ref()],
         bump
     )]
     pub vault_authority: AccountInfo<'info>,

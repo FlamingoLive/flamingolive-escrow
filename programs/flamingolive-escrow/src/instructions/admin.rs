@@ -87,7 +87,8 @@ pub fn update_config(
         config.volume_threshold = vt;
     }
     if let Some(wd) = window_duration {
-        require!(wd > 0, ErrorCode::InvalidConfig);
+        // Cap at 2 years to prevent accidentally locking the circuit breaker window forever
+        require!(wd > 0 && wd <= 63_072_000, ErrorCode::InvalidConfig);
         config.window_duration = wd;
     }
     if let Some(dw) = dispute_window {
@@ -155,6 +156,34 @@ pub struct UpdateConfig<'info> {
         seeds = [b"config"],
         bump,
         has_one = admin
+    )]
+    pub config: Box<Account<'info, ProgramConfig>>,
+}
+
+pub fn update_admin(ctx: Context<UpdateAdmin>, new_admin: Pubkey) -> Result<()> {
+    ctx.accounts.config.admin = new_admin;
+
+    emit!(ConfigUpdated {
+        is_paused:        ctx.accounts.config.is_paused,
+        volume_threshold: ctx.accounts.config.volume_threshold,
+        window_duration:  ctx.accounts.config.window_duration,
+        timestamp:        Clock::get()?.unix_timestamp,
+    });
+
+    Ok(())
+}
+
+#[derive(Accounts)]
+pub struct UpdateAdmin<'info> {
+    #[account(
+        constraint = config.admin == current_admin.key() @ ErrorCode::InvalidOwner
+    )]
+    pub current_admin: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [b"config"],
+        bump
     )]
     pub config: Box<Account<'info, ProgramConfig>>,
 }

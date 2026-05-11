@@ -32,6 +32,9 @@ pub enum ErrorCode {
     #[msg("Dispute window has expired. Cannot raise a dispute after 24 hours.")]
     DisputeWindowExpired,
 
+    #[msg("Dispute resolution deadline has passed. The judge can no longer adjudicate this dispute.")]
+    DisputeResolutionDeadlineExpired,
+
     #[msg("A dispute is in progress. Only the judge can resolve this escrow.")]
     DisputeInProgress,
 
