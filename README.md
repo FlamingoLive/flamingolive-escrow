@@ -3,9 +3,9 @@
 [![Solana](https://img.shields.io/badge/Solana-Devnet-black?logo=solana)](https://solana.com)
 [![Anchor Framework](https://img.shields.io/badge/Anchor-v0.31.1-blue)](https://project-serum.github.io/anchor/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/Version-3.2--Hardened-green)]()
+[![Version](https://img.shields.io/badge/Version-3.4-green)]()
 
-**Program ID**: `BcEopLQ9MxMdMtU57m5KYA4sk9qvhy29XkneEKHcfuSf` (Devnet)
+**Program ID**: `Gp3Qy7yguTZmDkNwKUxpweQfcRNsQ5tRQTjEkjqcDgSV` (Devnet)
 
 **Flamingo Live Escrow** is a Solana smart contract purpose-built for the Flamingo Live marketplace. It facilitates secure global commerce by connecting African sellers with international buyers through a logistics-verified escrow system.
 
@@ -81,7 +81,7 @@ The platform uses a modern, non-custodial architecture to ensure a seamless user
 | **Buyer**  | Deposits USDC, raises disputes after delivery.                                                         |
 | **Seller**  | Ships goods, receives 50% on shipping, 50% on delivery completion.                                |
 | **Judge**  | The logistics oracle / platform. Authorized to call `shipping()`, `delivered()`, `exchange()`, `adjudge()`, `cancel()`, `refund()`, and `refund_partial()`. |
-| **Admin** | Platform admin. Authorized to call `initialize_config()`, `update_config()`, and `collect_fees()`. |
+| **Admin** | Platform admin. Authorized to call `initialize_config()`, `update_config()`, `collect_fees()`, and `update_admin()`. |
 
 ---
 
@@ -111,11 +111,11 @@ npm install
 # Build the program
 anchor build
 
+# Run the full test suite (19 tests, spins up local validator automatically)
+anchor test
+
 # Deploy to Devnet
 anchor deploy --provider.cluster devnet
-
-# Run the test suite
-anchor test --provider.cluster localnet
 ```
 
 ---

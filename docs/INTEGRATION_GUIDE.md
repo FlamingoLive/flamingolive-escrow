@@ -171,7 +171,7 @@ async function handleDispute(orderCode: number) {
 ## 6. PDA Utility (`pda.ts`)
 
 ```typescript
-const PROGRAM_ID = new PublicKey("BcEopLQ9MxMdMtU57m5KYA4sk9qvhy29XkneEKHcfuSf");
+const PROGRAM_ID = new PublicKey("Gp3Qy7yguTZmDkNwKUxpweQfcRNsQ5tRQTjEkjqcDgSV");
 
 export function getVaultPDA(judgeKey: PublicKey, orderCode: number) {
   const orderCodeBuffer = new anchor.BN(orderCode).toArrayLike(Buffer, "le", 8);

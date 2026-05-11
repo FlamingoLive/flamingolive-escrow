@@ -1,7 +1,7 @@
 # Flamingo Live Escrow — Technical Documentation
 
-**Program ID:** `BcEopLQ9MxMdMtU57m5KYA4sk9qvhy29XkneEKHcfuSf`  
-**Version:** 3.3  
+**Program ID:** `Gp3Qy7yguTZmDkNwKUxpweQfcRNsQ5tRQTjEkjqcDgSV`  
+**Version:** 3.4  
 **Framework:** Anchor 0.31.1  
 **Network:** Solana (Devnet / Mainnet-Beta)  
 **Token Standard:** SPL Token (Token Program v1)
@@ -138,6 +138,12 @@ Updates program configuration. Use `is_paused: true` to manually trip the circui
 Collects accumulated platform fees to a destination account.
 **Authorized Signer:** Admin.
 
+### `update_admin`
+Transfers admin authority to a new public key. The current admin must sign.
+**Authorized Signer:** Current Admin.
+**Parameters:** `new_admin` — the public key of the incoming admin.
+**Note:** Irreversible from the old key once confirmed. Store the new admin keypair securely before calling.
+
 ### `initialize`
 Creates a new escrow order. Validates token accounts (frozen check, mint verification) before any transfers.
 **Authorized Signer:** Buyer.
@@ -198,7 +204,8 @@ Resolves a disputed order. Closes vault and escrow accounts.
 | `CircuitBreakerTripped` | Volume threshold exceeded |
 | `MathOverflow` | Arithmetic overflow/underflow |
 | `InvalidStatus` | Invalid status for operation |
-| `DisputeWindowExpired` | Too late to raise/resolve a dispute |
+| `DisputeWindowExpired` | Buyer's dispute window has expired — cannot raise a dispute after the configured window |
+| `DisputeResolutionDeadlineExpired` | Judge's resolution deadline has passed — cannot call `adjudge` after `dispute_resolution_deadline` |
 | `AccountFrozen` | Token account is frozen |
 | `InvalidMint` | Invalid mint for this operation |
 | `InvalidTrackingId` | Tracking ID must be 8–50 characters |
@@ -215,7 +222,16 @@ Resolves a disputed order. Closes vault and escrow accounts.
 
 ## Changelog
 
-### v3.3 (Current)
+### v3.4 (Current)
+- **New Instruction:** `update_admin` — allows the current admin to transfer authority to a new public key.
+- **New Error:** `DisputeResolutionDeadlineExpired` — distinct from `DisputeWindowExpired`; surfaces when the judge attempts to call `adjudge` after `dispute_resolution_deadline` has passed.
+- **Bug Fix:** `adjudge` now correctly raises `DisputeResolutionDeadlineExpired` instead of the buyer-facing `DisputeWindowExpired`.
+- **Bug Fix:** All judge instruction bodies (`adjudge`, `refund`, `refund_partial`) now derive PDA seeds from `escrow_account.judge_key` for consistency with their `#[account]` constraint seeds.
+- **Bug Fix:** `refund_partial` replaced `saturating_sub` with `checked_sub` — underflows now return `MathOverflow` instead of silently producing zero.
+- **Deploy:** Program re-deployed to devnet at new address `Gp3Qy7yguTZmDkNwKUxpweQfcRNsQ5tRQTjEkjqcDgSV` (previous `BcEopLQ9` deprecated).
+- **Testing:** 19-test localnet suite added covering all payment flows, dispute paths, circuit breaker, and admin key rotation.
+
+### v3.3
 - **Rename:** Program renamed from `lambda-escrow` to `flamingolive-escrow`.
 - **Bug Fix:** Token account validation (frozen/mint checks) moved before transfers in `initialize`.
 - **Bug Fix:** Circuit breaker `is_paused = true` removed from failing transaction path (state was always rolled back); admin must use `update_config` to manually pause.
