@@ -53,4 +53,8 @@ pub struct EscrowAccount {
     pub platform_fee:                 u64,
     /// Upfront logistics fee paid at deposit
     pub logistics_fee:                u64,
+    /// Amount added to the circuit-breaker rolling volume at initialize.
+    /// Used for consistent decrement on cancel/refund regardless of later
+    /// partial releases (e.g., the 50% seller share released at shipping).
+    pub deposited_amount:             u64,
 }

@@ -1,6 +1,6 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
-import { LambdaEscrow } from "../target/types/lambda_escrow";
+import { FlamingoliveEscrow } from "../target/types/flamingolive_escrow";
 import { 
   TOKEN_PROGRAM_ID, 
   Token 
@@ -13,11 +13,11 @@ import {
 } from "@solana/web3.js";
 import { assert } from "chai";
 
-describe("lambda-escrow", () => {
+describe("flamingolive-escrow", () => {
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
 
-  const program = anchor.workspace.LambdaEscrow as Program<LambdaEscrow>;
+  const program = anchor.workspace.FlamingoliveEscrow as Program<FlamingoliveEscrow>;
   
   let mintA: Token;
   let buyerTokenAccountA: PublicKey;

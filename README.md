@@ -1,13 +1,13 @@
-# 🦩 Flamingo Live — Lambda Escrow
+# 🦩 Flamingo Live — Escrow
 
 [![Solana](https://img.shields.io/badge/Solana-Devnet-black?logo=solana)](https://solana.com)
 [![Anchor Framework](https://img.shields.io/badge/Anchor-v0.31.1-blue)](https://project-serum.github.io/anchor/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/Version-3.1--Hardened-green)]()
+[![Version](https://img.shields.io/badge/Version-3.2--Hardened-green)]()
 
 **Program ID**: `BcEopLQ9MxMdMtU57m5KYA4sk9qvhy29XkneEKHcfuSf` (Devnet)
 
-**Flamingo Live Lambda Escrow** is a specialized Solana smart contract designed for the Flamingo Live marketplace. It facilitates secure global commerce by connecting African sellers with international buyers through a logistics-verified escrow system.
+**Flamingo Live Escrow** is a Solana smart contract purpose-built for the Flamingo Live marketplace. It facilitates secure global commerce by connecting African sellers with international buyers through a logistics-verified escrow system.
 
 Funds are held in USDC and released based on real-world delivery milestones verified by a trusted logistics oracle (The Judge).
 
@@ -52,7 +52,7 @@ Once delivery is confirmed, buyers have a configurable window to raise a dispute
 
 ### 🔌 Circuit Breaker Volume Management
 
-To protect against flash-loan attacks or platform exploits, the contract includes a rolling volume circuit breaker. If the total USDC volume exceeds a configurable threshold within a specific window, the program automatically pauses. The admin can adjust both the volume threshold and window duration via update_config.
+To protect against flash-loan attacks or platform exploits, the contract includes a rolling volume circuit breaker. If the total USDC volume exceeds a configurable threshold within a specific window, new deposits are rejected. The admin can pause/unpause manually via `update_config`.
 
 ### 📦 Multi-Carrier Support
 
@@ -80,7 +80,7 @@ The platform uses a modern, non-custodial architecture to ensure a seamless user
 | :--------- | :--------------------------------------------------------------------------------------------------- |
 | **Buyer**  | Deposits USDC, raises disputes after delivery.                                                         |
 | **Seller**  | Ships goods, receives 50% on shipping, 50% on delivery completion.                                |
-| **Judge**  | The logistics oracle/ platform. Authorized to call `shipping()`, `delivered()`, `exchange()`, `adjudge()`, `cancel()`, `refund()`, and `refund_partial()`. |
+| **Judge**  | The logistics oracle / platform. Authorized to call `shipping()`, `delivered()`, `exchange()`, `adjudge()`, `cancel()`, `refund()`, and `refund_partial()`. |
 | **Admin** | Platform admin. Authorized to call `initialize_config()`, `update_config()`, and `collect_fees()`. |
 
 ---
@@ -91,15 +91,15 @@ The platform uses a modern, non-custodial architecture to ensure a seamless user
 
 - **Rust**: `1.75.0+`
 - **Solana CLI**: `1.18.0+`
-- **Anchor**: `0.30.1`
+- **Anchor**: `0.31.1`
 - **Node.js**: `18.x+`
 
 ### Installation
 
 ```bash
 # Clone the repository
-git clone https://github.com/autonomous-ai/web3-ecm-smart-contracts.git
-cd web3-ecm-smart-contracts
+git clone https://github.com/FlamingoLive/flamingolive-escrow.git
+cd flamingolive-escrow
 
 # Install dependencies
 npm install
@@ -116,7 +116,6 @@ anchor deploy --provider.cluster devnet
 
 # Run the test suite
 anchor test --provider.cluster localnet
-
 ```
 
 ---
@@ -126,13 +125,13 @@ anchor test --provider.cluster localnet
 The project follows a modularized Anchor structure for better maintainability and security auditing:
 
 ```text
-programs/lambda-escrow/src/
+programs/flamingolive-escrow/src/
 ├── constants.rs      # Default values (e.g., 24h window)
 ├── errors.rs         # Custom ErrorCodes
-├── events.rs        # All on-chain events for off-chain indexing
-├── instructions/   # Logic partitioned by role (buyer, judge, admin, logistics)
-├── state/           # Account structures (EscrowAccount, ProgramConfig)
-└── lib.rs           # Program entry point
+├── events.rs         # All on-chain events for off-chain indexing
+├── instructions/     # Logic partitioned by role (buyer, judge, admin, logistics)
+├── state/            # Account structures (EscrowAccount, ProgramConfig)
+└── lib.rs            # Program entry point
 ```
 
 ---
@@ -144,7 +143,8 @@ The Judge keypair is the most critical component of the security model. In produ
 The contract validates:
 
 - **Tracking ID Length**: Minimum 8 characters to prevent fake IDs.
-- **Circuit Breaker**: Atomic volume decrements on cancellations/refunds.
+- **Circuit Breaker**: Consistent volume tracking via `deposited_amount` field — decrements on cancel/refund regardless of partial milestone releases.
+- **Token Safety**: Frozen account and mint checks run before any transfers.
 - **Status Locks**: Refunds are blocked during active disputes.
 
 ---

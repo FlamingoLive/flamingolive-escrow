@@ -6,7 +6,7 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-lambda_escrow = "BcEopLQ9MxMdMtU57m5KYA4sk9qvhy29XkneEKHcfuSf"
+flamingolive_escrow = "BcEopLQ9MxMdMtU57m5KYA4sk9qvhy29XkneEKHcfuSf"
 
 [registry]
 url = "https://api.apr.dev"

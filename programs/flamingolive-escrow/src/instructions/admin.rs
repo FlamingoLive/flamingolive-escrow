@@ -3,7 +3,6 @@ use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
 use crate::state::*;
 use crate::errors::ErrorCode;
 use crate::events::*;
-use crate::constants::*;
 
 pub fn initialize_config(
     ctx: Context<InitializeConfig>,
@@ -132,7 +131,6 @@ pub struct InitializeConfig<'info> {
         token::mint = mint,
         token::authority = platform_fee_vault_authority,
     )]
-    /// CHECK: Platform fee vault — PDA derived from [b"platform_fee_vault"] seeds
     pub platform_fee_vault: Box<Account<'info, TokenAccount>>,
 
     /// CHECK: PDA authority for platform fee vault
@@ -178,7 +176,6 @@ pub struct CollectFees<'info> {
         seeds = [b"platform_fee_vault"],
         bump
     )]
-    /// CHECK: Platform fee vault — PDA derived from [b"platform_fee_vault"] seeds
     pub platform_fee_vault: Box<Account<'info, TokenAccount>>,
 
     /// CHECK: Platform fee vault authority

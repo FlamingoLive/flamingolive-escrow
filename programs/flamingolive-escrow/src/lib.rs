@@ -11,7 +11,7 @@ use instructions::*;
 declare_id!("BcEopLQ9MxMdMtU57m5KYA4sk9qvhy29XkneEKHcfuSf");
 
 #[program]
-pub mod lambda_escrow {
+pub mod flamingolive_escrow {
     use super::*;
 
     pub fn initialize_config(

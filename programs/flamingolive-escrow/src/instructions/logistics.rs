@@ -295,7 +295,6 @@ pub struct Shipping<'info> {
     )]
     pub vault_authority: AccountInfo<'info>,
 
-    /// CHECK: Platform fee vault — PDA derived from [b"platform_vault"]
     #[account(
         mut,
         constraint = platform_fee_vault.key() == config.platform_fee_vault
@@ -399,13 +398,6 @@ pub struct Exchange<'info> {
         bump
     )]
     pub vault_authority: AccountInfo<'info>,
-
-    #[account(
-        mut,
-        constraint = platform_fee_vault.key() == config.platform_fee_vault
-            @ ErrorCode::InvalidAccount
-    )]
-    pub platform_fee_vault: Box<Account<'info, TokenAccount>>,
 
     pub token_program: Program<'info, Token>,
 }

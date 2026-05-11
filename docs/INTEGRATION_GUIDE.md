@@ -1,6 +1,6 @@
-# Lambda Escrow — Frontend & Backend Integration Guide
+# Flamingo Live Escrow — Frontend & Backend Integration Guide
 
-This guide walks developers through integrating the Lambda Escrow smart contract using **Privy MPC (Embedded Wallets)** for the dashboard and **Solana Pay** for authenticated mobile payments.
+This guide walks developers through integrating the Flamingo Live Escrow smart contract using **Privy MPC (Embedded Wallets)** for the dashboard and **Solana Pay** for authenticated mobile payments.
 
 ---
 

@@ -1,6 +1,6 @@
-# Lambda Escrow Architecture
+# Flamingo Live Escrow — Architecture
 
-This document describes the high-level architecture and lifecycle of the Lambda Escrow smart contract.
+This document describes the high-level architecture and lifecycle of the Flamingo Live Escrow smart contract.
 
 ## Escrow Lifecycle
 
@@ -39,8 +39,9 @@ The escrow handles three types of fees:
 
 ## Security Features
 
-- **Circuit Breaker**: Automatically pauses the program if volume thresholds are exceeded.
-- **Token Account Validation**: Ensures token accounts are not frozen and use the correct mint.
+- **Circuit Breaker**: Rejects new deposits if the rolling volume threshold is exceeded; admin manually pauses/unpauses via `update_config`.
+- **Token Account Validation**: Ensures token accounts are not frozen and use the correct mint — checked before any transfers in `initialize`.
+- **Consistent Volume Tracking**: `deposited_amount` stored per escrow ensures circuit-breaker decrements on cancel/refund are consistent with what was originally added, regardless of partial milestone releases.
 - **Configurable Dispute Window**: Allows the platform to adjust the time buyers have to raise disputes.
 - **Dispute Resolution Deadline**: Ensures disputes are handled in a timely manner.
 - **Safe Math**: All calculations use checked arithmetic to prevent overflows and rounding losses.

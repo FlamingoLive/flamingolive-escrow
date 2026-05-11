@@ -7,11 +7,11 @@ import { Connection, PublicKey } from '@solana/web3.js';
  * A React hook that bridges a Privy MPC embedded wallet to an Anchor Program.
  * This eliminates the need for standard Solana Wallet Adapters.
  * 
- * @param idl - The Anchor IDL for the lambda-escrow program
+ * @param idl - The Anchor IDL for the flamingolive-escrow program
  * @param programId - The public key of the deployed program
  * @param rpcUrl - The Solana RPC URL (e.g. devnet)
  */
-export function useLambdaEscrowProgram(idl: any, programId: string, rpcUrl: string) {
+export function useFlamingoliveEscrowProgram(idl: any, programId: string, rpcUrl: string) {
   const { wallets } = useWallets();
   const connection = new Connection(rpcUrl, "confirmed");
 
@@ -44,7 +44,7 @@ export function useLambdaEscrowProgram(idl: any, programId: string, rpcUrl: stri
 /**
  * Example Usage in a Component:
  * 
- * const program = useLambdaEscrowProgram(IDL, "DvDexLUC8x4ViabE5a3fhaPmRKLLJEPgW7iqMWBcjg11", "https://api.devnet.solana.com");
+ * const program = useFlamingoliveEscrowProgram(IDL, "DvDexLUC8x4ViabE5a3fhaPmRKLLJEPgW7iqMWBcjg11", "https://api.devnet.solana.com");
  * 
  * const createEscrow = async () => {
  *   if (!program) return;

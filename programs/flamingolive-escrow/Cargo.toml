@@ -1,12 +1,12 @@
 [package]
-name = "lambda-escrow"
+name = "flamingolive-escrow"
 version = "1.0.0"
-description = "Created with Autonomous"
+description = "Flamingo Live e-commerce escrow"
 edition = "2021"
 
 [lib]
 crate-type = ["cdylib", "lib"]
-name = "lambda_escrow"
+name = "flamingolive_escrow"
 
 [features]
 no-entrypoint = []

@@ -111,8 +111,10 @@ pub fn refund(ctx: Context<Refund>, order_code: u64) -> Result<()> {
         ErrorCode::InsufficientFunds
     );
 
+    // Use deposited_amount for consistent circuit-breaker decrement —
+    // escrow.amount may already reflect partial 50% release at shipping.
     ctx.accounts.config.current_volume = ctx.accounts.config.current_volume
-        .checked_sub(ctx.accounts.escrow_account.amount)
+        .checked_sub(ctx.accounts.escrow_account.deposited_amount)
         .ok_or(ErrorCode::MathOverflow)?;
 
     let order_bytes = order_code.to_le_bytes();
@@ -121,8 +123,9 @@ pub fn refund(ctx: Context<Refund>, order_code: u64) -> Result<()> {
     let seeds       = &[b"authority", judge_key.as_ref(), order_bytes.as_ref(), &[bump]];
     let signer      = &[&seeds[..]];
 
-    let amount = ctx.accounts.escrow_account.amount;
+    let vault_amount = ctx.accounts.escrow_account.amount;
 
+    // Return vault balance to buyer
     token::transfer(
         CpiContext::new_with_signer(
             ctx.accounts.token_program.to_account_info(),
@@ -133,35 +136,31 @@ pub fn refund(ctx: Context<Refund>, order_code: u64) -> Result<()> {
             },
             signer,
         ),
-        amount,
+        vault_amount,
     )?;
 
-    // If status >= Shipped, the platform fee was already collected
-    if ctx.accounts.escrow_account.status != EscrowStatus::Funded {
-        let platform_fee = ctx.accounts.escrow_account.platform_fee;
-        let bump_platform = ctx.bumps.platform_fee_vault_authority;
-        let seeds_platform: &[&[u8]] = &[b"platform_fee_authority", &[bump_platform]];
-        let signer_platform = &[&seeds_platform[..]];
+    // The platform fee was collected from the vault at shipping(); return it.
+    let platform_fee = ctx.accounts.escrow_account.platform_fee;
+    let bump_platform = ctx.bumps.platform_fee_vault_authority;
+    let seeds_platform: &[&[u8]] = &[b"platform_fee_authority", &[bump_platform]];
+    let signer_platform = &[&seeds_platform[..]];
 
-        token::transfer(
-            CpiContext::new_with_signer(
-                ctx.accounts.token_program.to_account_info(),
-                Transfer {
-                    from:      ctx.accounts.platform_fee_vault.to_account_info(),
-                    to:        ctx.accounts.buyer_deposit_token_account.to_account_info(),
-                    authority: ctx.accounts.platform_fee_vault_authority.to_account_info(),
-                },
-                signer_platform,
-            ),
-            platform_fee,
-        )?;
+    token::transfer(
+        CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info(),
+            Transfer {
+                from:      ctx.accounts.platform_fee_vault.to_account_info(),
+                to:        ctx.accounts.buyer_deposit_token_account.to_account_info(),
+                authority: ctx.accounts.platform_fee_vault_authority.to_account_info(),
+            },
+            signer_platform,
+        ),
+        platform_fee,
+    )?;
 
-        ctx.accounts.config.accumulated_fees = ctx.accounts.config.accumulated_fees
-            .checked_sub(platform_fee)
-            .ok_or(ErrorCode::MathOverflow)?;
-    }
-
-    ctx.accounts.escrow_account.status = EscrowStatus::Refunded;
+    ctx.accounts.config.accumulated_fees = ctx.accounts.config.accumulated_fees
+        .checked_sub(platform_fee)
+        .ok_or(ErrorCode::MathOverflow)?;
 
     token::close_account(
         CpiContext::new_with_signer(
@@ -175,12 +174,13 @@ pub fn refund(ctx: Context<Refund>, order_code: u64) -> Result<()> {
         ),
     )?;
 
-    emit!(FundsReleased {
+    emit!(EscrowRefunded {
         order_code,
-        seller:       ctx.accounts.seller.key(),
-        amount,
-        release_type: "seller_refund".to_string(),
-        timestamp:    Clock::get()?.unix_timestamp,
+        buyer:     ctx.accounts.buyer.key(),
+        amount:    vault_amount
+            .checked_add(platform_fee)
+            .ok_or(ErrorCode::MathOverflow)?,
+        timestamp: Clock::get()?.unix_timestamp,
     });
 
     Ok(())
@@ -234,6 +234,10 @@ pub fn refund_partial(
     ctx.accounts.escrow_account.amount = ctx.accounts.escrow_account.amount
         .checked_sub(amount)
         .ok_or(ErrorCode::MathOverflow)?;
+
+    // Keep deposited_amount in sync so a subsequent full refund decrements correctly.
+    ctx.accounts.escrow_account.deposited_amount = ctx.accounts.escrow_account.deposited_amount
+        .saturating_sub(amount);
 
     let remaining = ctx.accounts.escrow_account.amount;
 
@@ -377,7 +381,8 @@ pub struct Refund<'info> {
         constraint = escrow_account.status == EscrowStatus::Shipped || escrow_account.status == EscrowStatus::Delivered || escrow_account.status == EscrowStatus::Disputed
             @ ErrorCode::InvalidStatus,
         seeds = [b"escrow", judge.key().as_ref(), order_code.to_le_bytes().as_ref()],
-        bump
+        bump,
+        close = buyer
     )]
     pub escrow_account: Box<Account<'info, EscrowAccount>>,
 
@@ -395,7 +400,6 @@ pub struct Refund<'info> {
     )]
     pub vault_authority: AccountInfo<'info>,
 
-    /// CHECK: Platform fee vault
     #[account(
         mut,
         constraint = platform_fee_vault.key() == config.platform_fee_vault
@@ -403,7 +407,7 @@ pub struct Refund<'info> {
     )]
     pub platform_fee_vault: Box<Account<'info, TokenAccount>>,
 
-    /// CHECK: Platform fee vault authority
+    /// CHECK: PDA authority for the platform fee vault
     #[account(
         seeds = [b"platform_fee_authority"],
         bump

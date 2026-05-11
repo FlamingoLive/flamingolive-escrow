@@ -64,25 +64,7 @@ pub struct FundsReleased {
 }
 
 #[event]
-pub struct EscrowAdjudicated {
-    pub order_code: u64,
-    pub judge:      Pubkey,
-    /// "buyer" | "seller"
-    pub ruled_for:  String,
-    pub amount:     u64,
-    pub timestamp:  i64,
-}
-
-#[event]
 pub struct EscrowCancelled {
-    pub order_code: u64,
-    pub buyer:      Pubkey,
-    pub amount:    u64,
-    pub timestamp:  i64,
-}
-
-#[event]
-pub struct PartialRefund {
     pub order_code: u64,
     pub buyer:      Pubkey,
     pub amount:    u64,
@@ -101,6 +83,15 @@ pub struct FeesCollected {
     pub admin:       Pubkey,
     pub amount:      u64,
     pub timestamp:   i64,
+}
+
+#[event]
+pub struct EscrowRefunded {
+    pub order_code: u64,
+    pub buyer:      Pubkey,
+    /// Total returned to buyer (vault balance + platform fee refund)
+    pub amount:     u64,
+    pub timestamp:  i64,
 }
 
 #[event]

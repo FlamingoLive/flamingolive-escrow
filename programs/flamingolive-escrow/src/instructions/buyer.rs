@@ -12,104 +12,9 @@ pub fn initialize(
     logistics_fee: u64,
 ) -> Result<()> {
     require!(amount > 0, ErrorCode::InvalidAmount);
+    require!(amount > logistics_fee, ErrorCode::InvalidAmount);
 
-    // ── Circuit breaker ───────────────────────────────────────────────
-    {
-        let config = &mut ctx.accounts.config;
-        require!(!config.is_paused, ErrorCode::ProgramPaused);
-
-        let clock = Clock::get()?;
-        // Reset rolling window if window_duration has elapsed
-        let elapsed = clock.unix_timestamp
-            .checked_sub(config.last_volume_reset_time)
-            .ok_or(ErrorCode::MathOverflow)?;
-
-        if elapsed >= config.window_duration {
-            config.current_volume          = 0;
-            config.last_volume_reset_time  = clock.unix_timestamp;
-        }
-
-        config.current_volume = config.current_volume
-            .checked_add(amount)
-            .ok_or(ErrorCode::MathOverflow)?;
-
-        if config.current_volume > config.volume_threshold {
-            config.is_paused = true;
-            emit!(CircuitBreakerTriggered {
-                current_volume: config.current_volume,
-                threshold:      config.volume_threshold,
-                timestamp:      clock.unix_timestamp,
-            });
-            return err!(ErrorCode::CircuitBreakerTripped);
-        }
-    }
-
-    // ── Initialise escrow account ─────────────────────────────────────
-    let escrow = &mut ctx.accounts.escrow_account;
-    escrow.buyer_key                      = ctx.accounts.buyer.key();
-    escrow.buyer_deposit_token_account    = ctx.accounts.buyer_deposit_token_account.key();
-    escrow.seller_key                     = ctx.accounts.seller.key();
-    escrow.seller_receive_token_account   = ctx.accounts.seller_receive_token_account.key();
-    escrow.judge_key                      = ctx.accounts.judge.key();
-    escrow.amount                         = amount;
-    escrow.order_code                     = order_code;
-    escrow.status                         = EscrowStatus::Funded;
-    escrow.shipped_time                   = 0;
-    escrow.delivery_time                  = 0;
-    escrow.dispute_time                   = 0;
-    escrow.carrier                        = Carrier::Dhl; // Default
-    escrow.tracking_id                    = "".to_string();
-
-    escrow.logistics_fee                  = logistics_fee;
-
-    // Calculate and store platform fee (5%)
-    let platform_fee = amount
-        .checked_mul(PLATFORM_FEE_PERCENTAGE as u64)
-        .ok_or(ErrorCode::MathOverflow)?
-        .checked_div(100)
-        .ok_or(ErrorCode::MathOverflow)?;
-    escrow.platform_fee                   = platform_fee;
-
-    // Remaining deposit goes to vault after logistics is paid
-    let escrow_amount = amount
-        .checked_sub(logistics_fee)
-        .ok_or(ErrorCode::MathOverflow)?;
-    escrow.amount                         = escrow_amount;
-
-    // Transfer upfront logistics fee to the platform vault immediately
-    let logistics_cpi = Transfer {
-        from:      ctx.accounts.buyer_deposit_token_account.to_account_info(),
-        to:        ctx.accounts.platform_fee_vault.to_account_info(),
-        authority: ctx.accounts.buyer.to_account_info(),
-    };
-    token::transfer(
-        CpiContext::new(ctx.accounts.token_program.to_account_info(), logistics_cpi),
-        logistics_fee,
-    )?;
-
-    // Note: Platform fee (5%) will be collected at shipping()
-
-    // ── Transfer remaining USDC from buyer to vault ─────────────────────────
-    let cpi_accounts = Transfer {
-        from:      ctx.accounts.buyer_deposit_token_account.to_account_info(),
-        to:        ctx.accounts.vault_account.to_account_info(),
-        authority: ctx.accounts.buyer.to_account_info(),
-    };
-    token::transfer(
-        CpiContext::new(ctx.accounts.token_program.to_account_info(), cpi_accounts),
-        escrow_amount,
-    )?;
-
-    emit!(EscrowInitialized {
-        order_code,
-        buyer:     ctx.accounts.buyer.key(),
-        seller:    ctx.accounts.seller.key(),
-        amount: escrow_amount,
-        platform_fee,
-        timestamp: Clock::get()?.unix_timestamp,
-    });
-
-    // ── Token Account Validation ──────────────────────────────────────
+    // ── Token account validation — must run before any transfers ─────
     require!(
         !ctx.accounts.buyer_deposit_token_account.is_frozen(),
         ErrorCode::AccountFrozen
@@ -127,15 +32,109 @@ pub fn initialize(
         ErrorCode::InvalidMint
     );
 
+    // ── Compute amounts ───────────────────────────────────────────────
+    let platform_fee = amount
+        .checked_mul(PLATFORM_FEE_PERCENTAGE as u64)
+        .ok_or(ErrorCode::MathOverflow)?
+        .checked_div(100)
+        .ok_or(ErrorCode::MathOverflow)?;
+
+    // escrow_amount is the net held in the vault (amount minus logistics fee)
+    let escrow_amount = amount
+        .checked_sub(logistics_fee)
+        .ok_or(ErrorCode::MathOverflow)?;
+
+    // ── Circuit breaker ───────────────────────────────────────────────
+    {
+        let config = &mut ctx.accounts.config;
+        require!(!config.is_paused, ErrorCode::ProgramPaused);
+
+        let clock = Clock::get()?;
+        let elapsed = clock.unix_timestamp
+            .checked_sub(config.last_volume_reset_time)
+            .ok_or(ErrorCode::MathOverflow)?;
+
+        if elapsed >= config.window_duration {
+            config.current_volume         = 0;
+            config.last_volume_reset_time = clock.unix_timestamp;
+        }
+
+        // Track the vault-held amount so cancel/refund can decrement consistently
+        config.current_volume = config.current_volume
+            .checked_add(escrow_amount)
+            .ok_or(ErrorCode::MathOverflow)?;
+
+        if config.current_volume > config.volume_threshold {
+            // Return error — auto-pausing is a no-op because state is rolled back
+            // on tx failure; the admin must use update_config to manually pause.
+            return err!(ErrorCode::CircuitBreakerTripped);
+        }
+    }
+
+    // ── Initialise escrow account ─────────────────────────────────────
+    let escrow = &mut ctx.accounts.escrow_account;
+    escrow.buyer_key                      = ctx.accounts.buyer.key();
+    escrow.buyer_deposit_token_account    = ctx.accounts.buyer_deposit_token_account.key();
+    escrow.seller_key                     = ctx.accounts.seller.key();
+    escrow.seller_receive_token_account   = ctx.accounts.seller_receive_token_account.key();
+    escrow.judge_key                      = ctx.accounts.judge.key();
+    escrow.order_code                     = order_code;
+    escrow.status                         = EscrowStatus::Funded;
+    escrow.shipped_time                   = 0;
+    escrow.delivery_time                  = 0;
+    escrow.dispute_time                   = 0;
+    escrow.carrier                        = Carrier::Dhl;
+    escrow.tracking_id                    = String::new();
+    escrow.logistics_fee                  = logistics_fee;
+    escrow.platform_fee                   = platform_fee;
+    escrow.amount                         = escrow_amount;
+    escrow.deposited_amount               = escrow_amount;
+
+    // Transfer upfront logistics fee to the platform vault immediately
+    token::transfer(
+        CpiContext::new(
+            ctx.accounts.token_program.to_account_info(),
+            Transfer {
+                from:      ctx.accounts.buyer_deposit_token_account.to_account_info(),
+                to:        ctx.accounts.platform_fee_vault.to_account_info(),
+                authority: ctx.accounts.buyer.to_account_info(),
+            },
+        ),
+        logistics_fee,
+    )?;
+
+    // Transfer remaining USDC from buyer to escrow vault
+    token::transfer(
+        CpiContext::new(
+            ctx.accounts.token_program.to_account_info(),
+            Transfer {
+                from:      ctx.accounts.buyer_deposit_token_account.to_account_info(),
+                to:        ctx.accounts.vault_account.to_account_info(),
+                authority: ctx.accounts.buyer.to_account_info(),
+            },
+        ),
+        escrow_amount,
+    )?;
+
+    emit!(EscrowInitialized {
+        order_code,
+        buyer:       ctx.accounts.buyer.key(),
+        seller:      ctx.accounts.seller.key(),
+        amount:      escrow_amount,
+        platform_fee,
+        timestamp:   Clock::get()?.unix_timestamp,
+    });
+
     Ok(())
 }
 
 pub fn cancel(ctx: Context<Cancel>, order_code: u64) -> Result<()> {
     require!(!ctx.accounts.config.is_paused, ErrorCode::ProgramPaused);
 
-    // Decrement circuit breaker volume
+    // Decrement using deposited_amount — the amount originally added to the
+    // rolling window, which is unchanged regardless of partial releases.
     ctx.accounts.config.current_volume = ctx.accounts.config.current_volume
-        .checked_sub(ctx.accounts.escrow_account.amount)
+        .checked_sub(ctx.accounts.escrow_account.deposited_amount)
         .ok_or(ErrorCode::MathOverflow)?;
 
     let order_bytes = order_code.to_le_bytes();
@@ -178,8 +177,6 @@ pub fn cancel(ctx: Context<Cancel>, order_code: u64) -> Result<()> {
         timestamp: Clock::get()?.unix_timestamp,
     });
 
-    ctx.accounts.escrow_account.status = EscrowStatus::Refunded;
-
     Ok(())
 }
 
@@ -203,8 +200,14 @@ pub fn cancel_partial(
         ErrorCode::InvalidStatus
     );
 
-    // Decrement circuit breaker volume
+    // Decrement the rolling window by the partial amount being returned.
     ctx.accounts.config.current_volume = ctx.accounts.config.current_volume
+        .checked_sub(amount)
+        .ok_or(ErrorCode::MathOverflow)?;
+
+    // Also reduce deposited_amount so a subsequent full cancel correctly
+    // decrements only the remaining tracked balance.
+    ctx.accounts.escrow_account.deposited_amount = ctx.accounts.escrow_account.deposited_amount
         .checked_sub(amount)
         .ok_or(ErrorCode::MathOverflow)?;
 
@@ -330,7 +333,6 @@ pub struct Initialize<'info> {
     )]
     pub escrow_account: Box<Account<'info, EscrowAccount>>,
 
-    /// CHECK: Platform fee vault — PDA derived from [b"platform_vault"]
     #[account(
         mut,
         constraint = platform_fee_vault.key() == config.platform_fee_vault
